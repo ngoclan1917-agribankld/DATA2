@@ -1,4 +1,4 @@
-# python_project_evaluation_app.py
+# python_project_evaluation_app.py - ĐÃ KHẮC PHỤC LỖI NUMPY FINANCIAL
 
 import streamlit as st
 import pandas as pd
