@@ -1,9 +1,8 @@
-# python_project_evaluation_app.py - ĐÃ KHẮC PHỤC LỖI NUMPY FINANCIAL
+# python_project_evaluation_app.py - ĐÃ KHẮC PHỤC LỖI TÊN BIẾN (st.session_session)
 
 import streamlit as st
 import pandas as pd
 import numpy as np
-# CẦN THƯ VIỆN numpy_financial ĐỂ TÍNH NPV, IRR
 import numpy_financial as npf 
 import json
 from docx import Document
@@ -17,8 +16,9 @@ st.set_page_config(
 )
 
 # --- Khởi tạo state chat và data ---
+# ĐÃ SỬA LỖI: Dùng st.session_state thay vì st.session_session
 if "messages" not in st.session_state:
-    st.session_session.messages = []
+    st.session_state.messages = []
 if "project_data" not in st.session_state:
     st.session_state.project_data = None
 if "calculate_triggered" not in st.session_state:
@@ -138,11 +138,11 @@ def calculate_project_metrics(I0, N, R, C, WACC, Tax):
     # 3. Tính toán các Chỉ số Hiệu quả
     cf_array = df_cashflow['Dòng tiền Thuần (CF)'].values
 
-    # KHẮC PHỤC LỖI: Sử dụng npf.npv thay vì np.npv
+    # Sử dụng npf.npv
     npv_value = npf.npv(WACC, cf_array)
     
     try:
-        # KHẮC PHỤC LỖI: Sử dụng npf.irr thay vì np.irr
+        # Sử dụng npf.irr
         irr_value = npf.irr(cf_array)
     except Exception:
         irr_value = np.nan
@@ -280,7 +280,6 @@ if st.session_state.project_data is not None:
         # Cột 2: Dòng đời, WACC, Thuế
         with col2:
             st.markdown("**Các giá trị tỷ lệ (%)/Số năm:**")
-            # Đảm bảo giá trị khởi tạo >= min_value=1
             N = st.number_input("Dòng đời dự án (N)", 
                                 value=int(get_initial_value('project_life_years', 1)), 
                                 min_value=1, step=1)
