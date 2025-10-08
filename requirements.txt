@@ -6,17 +6,17 @@ streamlit
 # Thư viện xử lý dữ liệu chính
 pandas
 
-# Thư viện xử lý tính toán khoa học (Cần cho numpy.npv và numpy.irr)
+# Thư viện xử lý tính toán khoa học
 numpy
+
+# THÊM THƯ VIỆN NÀY ĐỂ GIẢI QUYẾT LỖI NPV/IRR
+numpy-financial
 
 # Thư viện cho chức năng AI (sử dụng Gemini API)
 google-genai
 
-# Thư viện cần thiết để pandas đọc và ghi file Excel (.xlsx) (Giữ lại, đề phòng logic tương lai)
+# Thư viện cần thiết để pandas đọc và ghi file Excel (Giữ lại)
 openpyxl
 
 # Thư viện BẮT BUỘC để đọc file Word (.docx)
 python-docx
-
-# Thư viện này thường đã được bao gồm hoặc không cần thiết nếu dùng to_markdown() của pandas
-# tabulate 
