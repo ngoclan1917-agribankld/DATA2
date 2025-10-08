@@ -1,4 +1,4 @@
-# python_project_evaluation_app.py - ĐÃ CHỈNH SỬA ĐỂ CẬP NHẬT DỮ LIỆU THIẾU
+# python_project_evaluation_app.py
 
 import streamlit as st
 import pandas as pd
@@ -19,6 +19,9 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "project_data" not in st.session_state:
     st.session_state.project_data = None
+# Thêm state để kiểm soát việc tính toán sau khi submit form
+if "calculate_triggered" not in st.session_state:
+    st.session_state.calculate_triggered = False
 
 
 # --- Styling cho Header ---
@@ -44,22 +47,20 @@ def read_docx_file(uploaded_file):
     return '\n'.join(full_text)
 
 # --- Chức năng 1: Lọc Thông tin Dự án bằng AI ---
-# Giữ lại cache_data nhưng không cache kết quả lỗi
 def extract_project_data(docx_content, api_key):
     """Sử dụng Gemini AI để lọc thông tin tài chính từ nội dung văn bản."""
-    # Logic AI Extraction được giữ nguyên, chỉ thay đổi cách gọi hàm
     try:
         client = genai.Client(api_key=api_key)
         model_name = 'gemini-2.5-flash'
         
         prompt = f"""
         Bạn là một chuyên gia phân tích tài chính. Hãy trích xuất các thông tin sau từ nội dung Phương án Kinh doanh dưới đây và trả về KẾT QUẢ DUY NHẤT dưới dạng đối tượng JSON.
-        
+
         Nội dung Phương án Kinh doanh:
         ---
         {docx_content}
         ---
-        
+
         Các trường bắt buộc trong JSON:
         1. Vốn đầu tư (initial_investment): Tổng chi phí ban đầu (Chỉ lấy số, không đơn vị).
         2. Dòng đời dự án (project_life_years): Số năm hoạt động (Chỉ lấy số).
@@ -100,11 +101,9 @@ def extract_project_data(docx_content, api_key):
 
 
 # --- Chức năng 2 & 3: Xây dựng Dòng tiền và Tính toán Chỉ số ---
-# Hàm này giờ nhận các giá trị đã được xác nhận (confirmed data)
 def calculate_project_metrics(I0, N, R, C, WACC, Tax):
     """Xây dựng bảng dòng tiền và tính NPV, IRR, PP, DPP từ dữ liệu đã được xác nhận."""
     
-    # 1. Kiểm tra LỖI ZERO DIVISION (Đã được khắc phục)
     if N <= 0:
         st.error(f"Lỗi logic: Dòng đời dự án (N) phải là số dương. Giá trị hiện tại là {N} năm.")
         return None, None
@@ -173,7 +172,7 @@ def calculate_project_metrics(I0, N, R, C, WACC, Tax):
         'IRR': irr_value,
         'PP': pp_value,
         'DPP': dpp_value,
-        'WACC': WACC # Đã được xác nhận
+        'WACC': WACC 
     }
     
     return df_cashflow, metrics
@@ -182,10 +181,13 @@ def calculate_project_metrics(I0, N, R, C, WACC, Tax):
 # --- Chức năng 4: Yêu cầu AI Phân tích Chỉ số ---
 
 def get_analysis_from_ai(metrics_data, api_key):
-    # Logic AI Analysis được giữ nguyên
+    """Gửi các chỉ số hiệu quả dự án cho Gemini AI để phân tích."""
     try:
         client = genai.Client(api_key=api_key)
         model_name = 'gemini-2.5-flash'
+        
+        # Đảm bảo WACC tồn tại trước khi tạo markdown
+        metrics_data['WACC'] = metrics_data.get('WACC', 0)
         
         data_markdown = pd.DataFrame(metrics_data.items(), columns=['Chỉ số', 'Giá trị']).to_markdown(index=False)
         
@@ -233,7 +235,7 @@ if st.button("LỌC DỮ LIỆU TÀI CHÍNH BẰNG AI 🔎", key="btn_ai_extract
         api_key = st.secrets.get("GEMINI_API_KEY") 
         if not api_key:
             st.error("Lỗi: Không tìm thấy Khóa API 'GEMINI_API_KEY'. Vui lòng cấu hình trong Streamlit Secrets.")
-            st.session_state.project_data = None # Xóa dữ liệu cũ nếu lỗi API
+            st.session_state.project_data = None 
         else:
             docx_content = read_docx_file(uploaded_file)
             st.session_state.project_data = extract_project_data(docx_content, api_key)
@@ -244,28 +246,56 @@ if st.session_state.project_data is not None:
     st.success("✅ Dữ liệu đã được trích xuất. Vui lòng kiểm tra và chỉnh sửa nếu cần:")
     data = st.session_state.project_data
     
+    # Hàm Helper để đảm bảo giá trị mặc định cho number_input (Khắc phục StreamlitValueBelowMinError)
+    def get_initial_value(key, default_value, is_percent=False):
+        try:
+            val = float(data.get(key, default_value))
+            if is_percent:
+                return val * 100
+            # Đặc biệt xử lý cho Dòng đời dự án (N) phải >= 1
+            if key == 'project_life_years':
+                return max(int(val), 1)
+            return val
+        except:
+            return default_value if not is_percent else default_value * 100
+
+    
     with st.form("data_update_form"):
         col1, col2 = st.columns(2)
         
         # Cột 1: Vốn đầu tư, Doanh thu, Chi phí
         with col1:
             st.markdown("**Các giá trị tiền tệ (VNĐ):**")
-            I0 = st.number_input("Vốn đầu tư (I0)", value=float(data.get('initial_investment', 0)), min_value=0.0, step=100000000.0, format='%f')
-            R = st.number_input("Doanh thu hằng năm (R)", value=float(data.get('annual_revenue', 0)), min_value=0.0, step=100000000.0, format='%f')
-            C = st.number_input("Chi phí hằng năm (C)", value=float(data.get('annual_cost', 0)), min_value=0.0, step=100000000.0, format='%f')
+            I0 = st.number_input("Vốn đầu tư (I0)", 
+                                 value=get_initial_value('initial_investment', 0), 
+                                 min_value=0.0, step=100000000.0, format='%f')
+            R = st.number_input("Doanh thu hằng năm (R)", 
+                                value=get_initial_value('annual_revenue', 0), 
+                                min_value=0.0, step=100000000.0, format='%f')
+            C = st.number_input("Chi phí hằng năm (C)", 
+                                value=get_initial_value('annual_cost', 0), 
+                                min_value=0.0, step=100000000.0, format='%f')
             
         # Cột 2: Dòng đời, WACC, Thuế
         with col2:
             st.markdown("**Các giá trị tỷ lệ (%)/Số năm:**")
-            N = st.number_input("Dòng đời dự án (N)", value=int(data.get('project_life_years', 0)), min_value=1, step=1)
-            WACC_percent = st.number_input("WACC (%)", value=float(data.get('wacc', 0.13)) * 100, min_value=0.0, max_value=100.0, step=0.1, format='%.2f')
-            Tax_percent = st.number_input("Thuế suất TNDN (%)", value=float(data.get('tax_rate', 0.20)) * 100, min_value=0.0, max_value=100.0, step=0.1, format='%.2f')
+            # KHẮC PHỤC LỖI StreamlitValueBelowMinError: đảm bảo giá trị khởi tạo >= min_value=1
+            N = st.number_input("Dòng đời dự án (N)", 
+                                value=int(get_initial_value('project_life_years', 1)), 
+                                min_value=1, step=1)
+            WACC_percent = st.number_input("WACC (%)", 
+                                           value=get_initial_value('wacc', 0.13, is_percent=True), 
+                                           min_value=0.0, max_value=100.0, step=0.1, format='%.2f')
+            Tax_percent = st.number_input("Thuế suất TNDN (%)", 
+                                          value=get_initial_value('tax_rate', 0.20, is_percent=True), 
+                                          min_value=0.0, max_value=100.0, step=0.1, format='%.2f')
 
-        # Nút xác nhận
+        # KHẮC PHỤC LỖI MISSING SUBMIT BUTTON
         submitted = st.form_submit_button("Xác nhận và Bắt đầu Tính toán")
 
     # Nếu người dùng xác nhận
     if submitted:
+        
         # Chuyển đổi về đúng định dạng
         I0 = float(I0)
         N = int(N)
@@ -279,14 +309,16 @@ if st.session_state.project_data is not None:
             'I0': I0, 'N': N, 'R': R, 'C': C, 'WACC': WACC, 'Tax': Tax
         }
         
-        # Bắt đầu tính toán
         st.session_state['calculate_triggered'] = True
+    # Đảm bảo rằng nếu form chưa submit, việc tính toán không bị kích hoạt
+    elif 'confirmed_data' in st.session_state:
+        st.session_state['calculate_triggered'] = True # Vẫn giữ kết quả tính toán trước đó
     else:
         st.session_state['calculate_triggered'] = False
 
 
 # --- HIỂN THỊ KẾT QUẢ VÀ PHÂN TÍCH (Chức năng 2, 3, 4) ---
-if 'calculate_triggered' in st.session_state and st.session_state['calculate_triggered']:
+if st.session_state['calculate_triggered'] and 'confirmed_data' in st.session_state:
     
     data_conf = st.session_state['confirmed_data']
     
@@ -304,7 +336,6 @@ if 'calculate_triggered' in st.session_state and st.session_state['calculate_tri
         # --- Chức năng 3: Tính Chỉ số ---
         st.subheader("3. Các Chỉ số Đánh giá Hiệu quả Dự án")
         
-        # Cập nhật WACC cho hiển thị và phân tích
         WACC_val = data_conf['WACC']
         N_val = data_conf['N']
         
