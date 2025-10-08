@@ -3,6 +3,8 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+# CẦN THƯ VIỆN numpy_financial ĐỂ TÍNH NPV, IRR
+import numpy_financial as npf 
 import json
 from docx import Document
 from google import genai
@@ -16,10 +18,9 @@ st.set_page_config(
 
 # --- Khởi tạo state chat và data ---
 if "messages" not in st.session_state:
-    st.session_state.messages = []
+    st.session_session.messages = []
 if "project_data" not in st.session_state:
     st.session_state.project_data = None
-# Thêm state để kiểm soát việc tính toán sau khi submit form
 if "calculate_triggered" not in st.session_state:
     st.session_state.calculate_triggered = False
 
@@ -137,10 +138,12 @@ def calculate_project_metrics(I0, N, R, C, WACC, Tax):
     # 3. Tính toán các Chỉ số Hiệu quả
     cf_array = df_cashflow['Dòng tiền Thuần (CF)'].values
 
-    npv_value = np.npv(WACC, cf_array)
+    # KHẮC PHỤC LỖI: Sử dụng npf.npv thay vì np.npv
+    npv_value = npf.npv(WACC, cf_array)
     
     try:
-        irr_value = np.irr(cf_array)
+        # KHẮC PHỤC LỖI: Sử dụng npf.irr thay vì np.irr
+        irr_value = npf.irr(cf_array)
     except Exception:
         irr_value = np.nan
         
@@ -186,7 +189,6 @@ def get_analysis_from_ai(metrics_data, api_key):
         client = genai.Client(api_key=api_key)
         model_name = 'gemini-2.5-flash'
         
-        # Đảm bảo WACC tồn tại trước khi tạo markdown
         metrics_data['WACC'] = metrics_data.get('WACC', 0)
         
         data_markdown = pd.DataFrame(metrics_data.items(), columns=['Chỉ số', 'Giá trị']).to_markdown(index=False)
@@ -246,13 +248,12 @@ if st.session_state.project_data is not None:
     st.success("✅ Dữ liệu đã được trích xuất. Vui lòng kiểm tra và chỉnh sửa nếu cần:")
     data = st.session_state.project_data
     
-    # Hàm Helper để đảm bảo giá trị mặc định cho number_input (Khắc phục StreamlitValueBelowMinError)
+    # Hàm Helper để đảm bảo giá trị mặc định cho number_input 
     def get_initial_value(key, default_value, is_percent=False):
         try:
             val = float(data.get(key, default_value))
             if is_percent:
                 return val * 100
-            # Đặc biệt xử lý cho Dòng đời dự án (N) phải >= 1
             if key == 'project_life_years':
                 return max(int(val), 1)
             return val
@@ -279,7 +280,7 @@ if st.session_state.project_data is not None:
         # Cột 2: Dòng đời, WACC, Thuế
         with col2:
             st.markdown("**Các giá trị tỷ lệ (%)/Số năm:**")
-            # KHẮC PHỤC LỖI StreamlitValueBelowMinError: đảm bảo giá trị khởi tạo >= min_value=1
+            # Đảm bảo giá trị khởi tạo >= min_value=1
             N = st.number_input("Dòng đời dự án (N)", 
                                 value=int(get_initial_value('project_life_years', 1)), 
                                 min_value=1, step=1)
@@ -290,7 +291,7 @@ if st.session_state.project_data is not None:
                                           value=get_initial_value('tax_rate', 0.20, is_percent=True), 
                                           min_value=0.0, max_value=100.0, step=0.1, format='%.2f')
 
-        # KHẮC PHỤC LỖI MISSING SUBMIT BUTTON
+        # Nút submit chính thức cho form
         submitted = st.form_submit_button("Xác nhận và Bắt đầu Tính toán")
 
     # Nếu người dùng xác nhận
@@ -310,9 +311,8 @@ if st.session_state.project_data is not None:
         }
         
         st.session_state['calculate_triggered'] = True
-    # Đảm bảo rằng nếu form chưa submit, việc tính toán không bị kích hoạt
     elif 'confirmed_data' in st.session_state:
-        st.session_state['calculate_triggered'] = True # Vẫn giữ kết quả tính toán trước đó
+        st.session_state['calculate_triggered'] = True
     else:
         st.session_state['calculate_triggered'] = False
 
